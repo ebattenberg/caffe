@@ -70,7 +70,7 @@ MKL_LIB_DIR := $(MKL_DIR)/lib $(MKL_DIR)/lib/intel64
 INCLUDE_DIRS += ./src ./include $(CUDA_INCLUDE_DIR) $(MKL_INCLUDE_DIR)
 LIBRARY_DIRS += $(CUDA_LIB_DIR) $(MKL_LIB_DIR)
 LIBRARIES := cudart cublas curand protobuf opencv_core opencv_highgui \
-	glog mkl_rt mkl_intel_thread leveldb snappy pthread boost_system \
+	glog mkl_rt mkl_intel_thread mkl_core iomp5 leveldb snappy pthread boost_system \
 	opencv_imgproc
 PYTHON_LIBRARIES := boost_python python2.7
 WARNINGS := -Wall
