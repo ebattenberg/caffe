@@ -95,8 +95,10 @@ LIBRARIES := cudart cublas curand \
 	snappy \
 	boost_system \
 	hdf5_hl hdf5 \
-	opencv_core opencv_highgui opencv_imgproc \
+	opencv_core opencv_highgui opencv_imgproc
+
 #mkl_rt mkl_intel_thread mkl_core iomp5 \
+
 PYTHON_LIBRARIES := boost_python python2.7
 WARNINGS := -Wall
 
