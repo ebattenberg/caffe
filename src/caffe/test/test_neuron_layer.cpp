@@ -1,8 +1,9 @@
 // Copyright 2013 Yangqing Jia
 
 #include <cstring>
-#include <cuda_runtime.h>
+#include <vector>
 
+#include "cuda_runtime.h"
 #include "gtest/gtest.h"
 #include "caffe/blob.hpp"
 #include "caffe/common.hpp"
@@ -28,7 +29,7 @@ class NeuronLayerTest : public ::testing::Test {
     filler.Fill(this->blob_bottom_);
     blob_bottom_vec_.push_back(blob_bottom_);
     blob_top_vec_.push_back(blob_top_);
-  };
+  }
   virtual ~NeuronLayerTest() { delete blob_bottom_; delete blob_top_; }
   Blob<Dtype>* const blob_bottom_;
   Blob<Dtype>* const blob_top_;
@@ -60,7 +61,8 @@ TYPED_TEST(NeuronLayerTest, TestReLUGradientCPU) {
   Caffe::set_mode(Caffe::CPU);
   ReLULayer<TypeParam> layer(layer_param);
   GradientChecker<TypeParam> checker(1e-2, 1e-3, 1701, 0., 0.01);
-  checker.CheckGradientExhaustive(layer, this->blob_bottom_vec_, this->blob_top_vec_);
+  checker.CheckGradientExhaustive(&layer, &(this->blob_bottom_vec_),
+      &(this->blob_top_vec_));
 }
 
 
@@ -85,8 +87,65 @@ TYPED_TEST(NeuronLayerTest, TestReLUGradientGPU) {
   Caffe::set_mode(Caffe::GPU);
   ReLULayer<TypeParam> layer(layer_param);
   GradientChecker<TypeParam> checker(1e-2, 1e-3, 1701, 0., 0.01);
-  checker.CheckGradientExhaustive(layer, this->blob_bottom_vec_, this->blob_top_vec_);
+  checker.CheckGradientExhaustive(&layer, &(this->blob_bottom_vec_),
+      &(this->blob_top_vec_));
 }
+
+
+TYPED_TEST(NeuronLayerTest, TestSigmoidCPU) {
+  LayerParameter layer_param;
+  Caffe::set_mode(Caffe::CPU);
+  SigmoidLayer<TypeParam> layer(layer_param);
+  layer.SetUp(this->blob_bottom_vec_, &(this->blob_top_vec_));
+  layer.Forward(this->blob_bottom_vec_, &(this->blob_top_vec_));
+  // Now, check values
+  const TypeParam* bottom_data = this->blob_bottom_->cpu_data();
+  const TypeParam* top_data = this->blob_top_->cpu_data();
+  for (int i = 0; i < this->blob_bottom_->count(); ++i) {
+    EXPECT_FLOAT_EQ(top_data[i], 1. / (1 + exp(-bottom_data[i])));
+    // check that we squashed the value between 0 and 1
+    EXPECT_GE(top_data[i], 0.);
+    EXPECT_LE(top_data[i], 1.);
+  }
+}
+
+
+TYPED_TEST(NeuronLayerTest, TestSigmoidGradientCPU) {
+  LayerParameter layer_param;
+  Caffe::set_mode(Caffe::CPU);
+  SigmoidLayer<TypeParam> layer(layer_param);
+  GradientChecker<TypeParam> checker(1e-2, 1e-3, 1701, 0., 0.01);
+  checker.CheckGradientExhaustive(&layer, &(this->blob_bottom_vec_),
+      &(this->blob_top_vec_));
+}
+
+TYPED_TEST(NeuronLayerTest, TestSigmoidGPU) {
+  LayerParameter layer_param;
+  Caffe::set_mode(Caffe::GPU);
+  SigmoidLayer<TypeParam> layer(layer_param);
+  layer.SetUp(this->blob_bottom_vec_, &(this->blob_top_vec_));
+  layer.Forward(this->blob_bottom_vec_, &(this->blob_top_vec_));
+  // Now, check values
+  const TypeParam* bottom_data = this->blob_bottom_->cpu_data();
+  const TypeParam* top_data = this->blob_top_->cpu_data();
+  for (int i = 0; i < this->blob_bottom_->count(); ++i) {
+    EXPECT_FLOAT_EQ(top_data[i], 1. / (1 + exp(-bottom_data[i])));
+    // check that we squashed the value between 0 and 1
+    EXPECT_GE(top_data[i], 0.);
+    EXPECT_LE(top_data[i], 1.);
+  }
+}
+
+
+TYPED_TEST(NeuronLayerTest, TestSigmoidGradientGPU) {
+  LayerParameter layer_param;
+  Caffe::set_mode(Caffe::GPU);
+  SigmoidLayer<TypeParam> layer(layer_param);
+  GradientChecker<TypeParam> checker(1e-2, 1e-3, 1701, 0., 0.01);
+  checker.CheckGradientExhaustive(&layer, &(this->blob_bottom_vec_),
+      &(this->blob_top_vec_));
+}
+
 
 
 TYPED_TEST(NeuronLayerTest, TestDropoutCPU) {
@@ -113,7 +172,8 @@ TYPED_TEST(NeuronLayerTest, TestDropoutGradientCPU) {
   Caffe::set_mode(Caffe::CPU);
   DropoutLayer<TypeParam> layer(layer_param);
   GradientChecker<TypeParam> checker(1e-2, 1e-3);
-  checker.CheckGradientExhaustive(layer, this->blob_bottom_vec_, this->blob_top_vec_);
+  checker.CheckGradientExhaustive(&layer, &(this->blob_bottom_vec_),
+      &(this->blob_top_vec_));
 }
 
 
@@ -163,7 +223,8 @@ TYPED_TEST(NeuronLayerTest, TestDropoutGradientGPU) {
     GradientChecker<TypeParam> checker(1e-2, 1e-3);
     // it is too expensive to call curand multiple times, so we don't do an
     // exhaustive gradient check.
-    checker.CheckGradient(layer, this->blob_bottom_vec_, this->blob_top_vec_);
+    checker.CheckGradient(&layer, &(this->blob_bottom_vec_),
+        &(this->blob_top_vec_));
   } else {
     LOG(ERROR) << "Skipping test to spare my laptop.";
   }
@@ -210,7 +271,8 @@ TYPED_TEST(NeuronLayerTest, TestBNLLGradientCPU) {
   Caffe::set_mode(Caffe::CPU);
   BNLLLayer<TypeParam> layer(layer_param);
   GradientChecker<TypeParam> checker(1e-2, 1e-3);
-  checker.CheckGradientExhaustive(layer, this->blob_bottom_vec_, this->blob_top_vec_);
+  checker.CheckGradientExhaustive(&layer, &(this->blob_bottom_vec_),
+      &(this->blob_top_vec_));
 }
 
 
@@ -235,10 +297,9 @@ TYPED_TEST(NeuronLayerTest, TestBNLLGradientGPU) {
   Caffe::set_mode(Caffe::GPU);
   BNLLLayer<TypeParam> layer(layer_param);
   GradientChecker<TypeParam> checker(1e-2, 1e-3);
-  checker.CheckGradientExhaustive(layer, this->blob_bottom_vec_, this->blob_top_vec_);
+  checker.CheckGradientExhaustive(&layer, &(this->blob_bottom_vec_),
+      &(this->blob_top_vec_));
 }
 
 
-
-
-}
+}  // namespace caffe

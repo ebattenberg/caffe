@@ -18,6 +18,11 @@
 #define CURAND_CHECK(condition) CHECK_EQ((condition), CURAND_STATUS_SUCCESS)
 #define VSL_CHECK(condition) CHECK_EQ((condition), VSL_STATUS_OK)
 
+#define CUDA_KERNEL_LOOP(i, n) \
+  for (int i = blockIdx.x * blockDim.x + threadIdx.x; \
+       i < (n); \
+       i += blockDim.x * gridDim.x)
+
 // After a kernel is executed, this will check the error and if there is one,
 // exit loudly.
 #define CUDA_POST_KERNEL_CHECK \
@@ -49,7 +54,12 @@ using boost::shared_ptr;
 
 
 // We will use 1024 threads per block, which requires cuda sm_2x or above.
-const int CAFFE_CUDA_NUM_THREADS = 1024;
+#if __CUDA_ARCH__ >= 200
+    const int CAFFE_CUDA_NUM_THREADS = 1024;
+#else
+    const int CAFFE_CUDA_NUM_THREADS = 512;
+#endif
+
 
 
 inline int CAFFE_GET_BLOCKS(const int N) {

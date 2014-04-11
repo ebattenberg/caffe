@@ -17,8 +17,11 @@ namespace caffe {
 
 template <typename Dtype>
 void* DataLayerPrefetch(void* layer_pointer) {
+  CHECK(layer_pointer);
   DataLayer<Dtype>* layer = reinterpret_cast<DataLayer<Dtype>*>(layer_pointer);
+  CHECK(layer);
   Datum datum;
+  CHECK(layer->prefetch_data_);
   Dtype* top_data = layer->prefetch_data_->mutable_cpu_data();
   Dtype* top_label = layer->prefetch_label_->mutable_cpu_data();
   const Dtype scale = layer->layer_param_.scale();
@@ -38,6 +41,8 @@ void* DataLayerPrefetch(void* layer_pointer) {
   const Dtype* mean = layer->data_mean_.cpu_data();
   for (int itemid = 0; itemid < batchsize; ++itemid) {
     // get a blob
+    CHECK(layer->iter_);
+    CHECK(layer->iter_->Valid());
     datum.ParseFromString(layer->iter_->value().ToString());
     const string& data = datum.data();
     if (cropsize) {
@@ -45,12 +50,15 @@ void* DataLayerPrefetch(void* layer_pointer) {
       int h_off, w_off;
       // We only do random crop when we do training.
       if (Caffe::phase() == Caffe::TRAIN) {
+        // NOLINT_NEXT_LINE(runtime/threadsafe_fn)
         h_off = rand() % (height - cropsize);
+        // NOLINT_NEXT_LINE(runtime/threadsafe_fn)
         w_off = rand() % (width - cropsize);
       } else {
         h_off = (height - cropsize) / 2;
         w_off = (width - cropsize) / 2;
       }
+      // NOLINT_NEXT_LINE(runtime/threadsafe_fn)
       if (mirror && rand() % 2) {
         // Copy mirrored version
         for (int c = 0; c < channels; ++c) {
@@ -106,9 +114,14 @@ void* DataLayerPrefetch(void* layer_pointer) {
     }
   }
 
-  return (void*)NULL;
+  return reinterpret_cast<void*>(NULL);
 }
 
+template <typename Dtype>
+DataLayer<Dtype>::~DataLayer<Dtype>() {
+  // Finally, join the thread
+  CHECK(!pthread_join(thread_, NULL)) << "Pthread joining failed.";
+}
 
 template <typename Dtype>
 void DataLayer<Dtype>::SetUp(const vector<Blob<Dtype>*>& bottom,
@@ -119,6 +132,7 @@ void DataLayer<Dtype>::SetUp(const vector<Blob<Dtype>*>& bottom,
   leveldb::DB* db_temp;
   leveldb::Options options;
   options.create_if_missing = false;
+  options.max_open_files = 100;
   LOG(INFO) << "Opening leveldb " << this->layer_param_.source();
   leveldb::Status status = leveldb::DB::Open(
       options, this->layer_param_.source(), &db_temp);
@@ -129,6 +143,7 @@ void DataLayer<Dtype>::SetUp(const vector<Blob<Dtype>*>& bottom,
   iter_->SeekToFirst();
   // Check if we would need to randomly skip a few data points
   if (this->layer_param_.rand_skip()) {
+    // NOLINT_NEXT_LINE(runtime/threadsafe_fn)
     unsigned int skip = rand() % this->layer_param_.rand_skip();
     LOG(INFO) << "Skipping first " << skip << " data points.";
     while (skip-- > 0) {
@@ -212,32 +227,9 @@ void DataLayer<Dtype>::Forward_cpu(const vector<Blob<Dtype>*>& bottom,
       reinterpret_cast<void*>(this))) << "Pthread execution failed.";
 }
 
-template <typename Dtype>
-void DataLayer<Dtype>::Forward_gpu(const vector<Blob<Dtype>*>& bottom,
-      vector<Blob<Dtype>*>* top) {
-  // First, join the thread
-  CHECK(!pthread_join(thread_, NULL)) << "Pthread joining failed.";
-  // Copy the data
-  CUDA_CHECK(cudaMemcpy((*top)[0]->mutable_gpu_data(),
-      prefetch_data_->cpu_data(), sizeof(Dtype) * prefetch_data_->count(),
-      cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy((*top)[1]->mutable_gpu_data(),
-      prefetch_label_->cpu_data(), sizeof(Dtype) * prefetch_label_->count(),
-      cudaMemcpyHostToDevice));
-  // Start a new prefetch thread
-  CHECK(!pthread_create(&thread_, NULL, DataLayerPrefetch<Dtype>,
-      reinterpret_cast<void*>(this))) << "Pthread execution failed.";
-}
-
 // The backward operations are dummy - they do not carry any computation.
 template <typename Dtype>
 Dtype DataLayer<Dtype>::Backward_cpu(const vector<Blob<Dtype>*>& top,
-      const bool propagate_down, vector<Blob<Dtype>*>* bottom) {
-  return Dtype(0.);
-}
-
-template <typename Dtype>
-Dtype DataLayer<Dtype>::Backward_gpu(const vector<Blob<Dtype>*>& top,
       const bool propagate_down, vector<Blob<Dtype>*>* bottom) {
   return Dtype(0.);
 }

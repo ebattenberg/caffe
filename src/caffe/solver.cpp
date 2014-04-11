@@ -40,6 +40,9 @@ Solver<Dtype>::Solver(const SolverParameter& param)
 template <typename Dtype>
 void Solver<Dtype>::Solve(const char* resume_file) {
   Caffe::set_mode(Caffe::Brew(param_.solver_mode()));
+  if (param_.solver_mode() && param_.has_device_id()) {
+    Caffe::SetDevice(param_.device_id());
+  }
   Caffe::set_phase(Caffe::TRAIN);
   LOG(INFO) << "Solving " << net_->name();
   PreSolve();
@@ -81,7 +84,7 @@ void Solver<Dtype>::Solve(const char* resume_file) {
 
 template <typename Dtype>
 void Solver<Dtype>::Test() {
-  LOG(INFO) << "Testing net";
+  LOG(INFO) << "Iteration " << iter_ << ", Testing net";
   NetParameter net_param;
   net_->ToProto(&net_param);
   CHECK_NOTNULL(test_net_.get())->CopyTrainedLayersFrom(net_param);
@@ -120,8 +123,9 @@ void Solver<Dtype>::Snapshot() {
   // For intermediate results, we will also dump the gradient values.
   net_->ToProto(&net_param, param_.snapshot_diff());
   string filename(param_.snapshot_prefix());
-  char iter_str_buffer[20];
-  sprintf(iter_str_buffer, "_iter_%d", iter_);
+  const int kBufferSize = 20;
+  char iter_str_buffer[kBufferSize];
+  snprintf(iter_str_buffer, kBufferSize, "_iter_%d", iter_);
   filename += iter_str_buffer;
   LOG(INFO) << "Snapshotting to " << filename;
   WriteProtoToBinaryFile(net_param, filename.c_str());
